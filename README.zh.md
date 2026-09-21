@@ -1,0 +1,153 @@
+# dsh-zcode-breaker
+
+[English](README.md) | 简体中文
+
+给 DeepSeek Harness 自动压缩用的 rapid-refill 熔断器：拦住「压完立刻又满、于是每一步都再压一次」这个死循环，并告诉用户是哪个过大的读取或工具输出造成的。思路来自 ZCode 的同名实现。
+
+## 它解决的具体问题
+
+`@deepseek-ai/dsh-compaction-basic` 里自动压缩有两条触发路径：
+
+| 触发 | 入口 | 次数上限 |
+| --- | --- | --- |
+| 步边界压力 | `agent/pre-step` 调 `compactIfNeeded(agent, "pressure")` | 无 |
+| 溢出恢复 | `agent/request-error` 调 `compactIfNeeded(agent, "context-overflow")` | `maxOverflowRetries` |
+
+压力那条是无上限的：测得的压力一旦超过 `thresholdRatio`，下一步就再压一次，而每次压缩都是一次完整的摘要模型调用。于是一次过大的文件读取或工具输出就能造出这样一个循环——每一步烧掉一次模型调用，直到会话被放弃，而转录里只会反复出现下面这一行：
+
+```text
+compaction (step pressure): shadowed N surface nodes (seqs A-B, ~T tokens)
+```
+
+## 它做了什么
+
+它继承 `BasicCompactionEngine`，只包住一个方法：`compactIfNeeded`。
+
+- 状态按 session 隔离，多会话互不污染。
+- 「工具轮次」取自持久会话日志：一条带至少一个工具调用的助手消息。这与压缩接缝自己判断 surface 配对时用的口径一致，而不是猜的步数。
+- 距上次压缩不足 `toolTurnThreshold` 个工具轮次又需要压缩，记一次 rapid refill。
+- 连续达到 `maxConsecutiveRapidRefills` 次时，**在这次压缩真正执行之前**就拒绝它，那一发摘要调用永远不会被花掉。
+- 拒绝会**锁定状态**，并抛出携带可操作建议的 `CompactionRapidRefillError`。
+- 熔断期间还会注入一个 prompt 段。因为宿主会吞掉 `compactIfNeeded` 抛出的错误并继续该轮，只抛错的话用户什么都看不到。
+- 命令 `/compaction-breaker` 用来查看状态并重新武装。
+
+其余全部保留父类行为：触发策略、保留比例、surface 改写、工具配对安全与摘要实现。
+
+## 装配：这是 preset 行，不是 profile patch
+
+这是最容易搞错的地方。标准 harness 里 `compaction-basic` 存在**两份**：一份是 `@deepseek-ai/dsh-base` 的宿主平面行，另一份在 agent preset 的 compaction 分组里，该分组声明了 `isolate: { compaction: true, toolResultPruner: true }`。agent 会话的 `ctx.compaction` 解析到那个隔离域里，所以停掉宿主行对 agent 毫无影响；而那个域由 preset 的 YAML 组成，它从来不出现在 `dsh --profile web --dump-config` 里。
+
+这个接缝还是**单槽位**的：同一 isolate 作用域出现第二个 provider 会让 `ctx.provide()` 抛错，而 `ctx.reflect.set()` 只接受持有该服务的 fiber 的写入。因此本插件是**替换**那一行，无法从旁边的行去包覆它。
+
+### 安装
+
+```bash
+dsh plugin --profile web add dsh-zcode-breaker
+```
+
+安装时会提示本包没有声明 `dsh.bundle`。这是预期的：本插件由 preset 行引用，而不是作为 profile 层挂载。
+
+接着替换你的 preset 里 `agent.cordis.yml` 的那一行：
+
+```yaml
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-breaker
+      name: 'dsh-zcode-breaker'
+      config:
+        toolTurnThreshold: 2
+        maxConsecutiveRapidRefills: 3
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+```
+
+请把 preset 复制到你的用户 preset 目录再改，而不是直接改随包分发的那份，否则 harness 升级会覆盖你的改动。
+
+## 配置
+
+父类的每个键都保留下来，并在子类上重新声明，因此既不会被父类的严格校验器拒掉，也不会丢失：
+
+| 键 | 默认 | 含义 |
+| --- | --- | --- |
+| `thresholdRatio` | `0.8` | 触发压缩的压力比例 |
+| `retainRatio` | `0.16` | 压缩后保留的尾部比例 |
+| `retainTokens` | 无 | 用绝对 token 数代替上面的比例 |
+| `summarizationProvider` | 空 | 摘要用哪条路由 |
+| `summarizationModel` | 空 | 摘要用哪个模型 |
+| `maxTokens` | `8192` | 摘要输出上限 |
+| `compactionRetries` | `1` | 摘要失败后的重试次数 |
+| `maxOverflowRetries` | `1` | 溢出恢复的重试次数 |
+| `modelPolicies` | 无 | 按 provider 与模型覆写上述各项 |
+| `auto` | `true` | 自动压缩总开关 |
+
+本插件新增的键：
+
+| 键 | 默认 | 含义 |
+| --- | --- | --- |
+| `toolTurnThreshold` | `2` | 间隔小于这个工具轮次数就算 rapid；恰好等于不算 |
+| `maxConsecutiveRapidRefills` | `3` | 连续第几次 rapid refill 时拒绝 |
+| `announceInPrompt` | `true` | 熔断后是否注入那段建议 prompt |
+
+合计 **13 个配置项**，并且本文件声明兼容 dsh `>=0.1.5-rc.2 <0.2.0-0`。
+
+## 用户能看到的面
+
+| 面 | 内容 |
+| --- | --- |
+| 日志 | 一行 warn，写明连续次数、阈值与上一次间隔 |
+| `/compaction-breaker` | 状态报告；`/compaction-breaker reset` 重新武装 |
+| prompt 段 | 熔断期间注入，指示模型把情况转述给人 |
+
+## 状态语义——三个刻意的决定
+
+1. 拒绝即锁定。被拒绝的尝试不会 commit，所以若不锁定，间隔一超过阈值就会自动放开，变成「拦两次放一次」。锁定才让它成为**停机**而不是**减速**。
+2. 只有两条出路：reset 子命令，或一次成功的**手动** `/compact`。人工主动压缩是新信息，不该被自动路径的历史拦住。
+3. 重置**不**清零工具轮次时钟。那是会话的单调时钟，清零会让之后所有间隔都显得健康。被清掉的只有 rapid 计数、上次压缩标记、锁定与拒绝次数。
+
+熔断不是全局禁用：会话照常可用，只是它这一个 session 的自动压缩停了。
+
+## 兼容性与已知边界
+
+- 它与其它压缩引擎**互斥**。若干后端都占同一个 `ctx.compaction` 槽位，它们都无法与本引擎同时挂载。这是接缝本身的限制，不是本插件的选择。
+- 宿主平面那一行不受影响，因此不组合 preset 的会话完全不受影响。
+- 父类默认值被继承：父类自己的 schema 不带默认值，默认值由它的 resolver 提供。因此父类将来新增的键需要在这里重新声明，才能继续可配。
+- 状态放在**模块级 WeakMap**，而不是类的私有字段。这是刻意的：域交给使用方的那个 `ctx.compaction` 对象，不保证是私有初始化器跑过的那个，而私有字段读取会在压缩路径里抛错——偏偏那里宿主会把错误吞掉。
+- **模型驱动的那一段端到端验收尚未跑过。** 直到「引擎在真实域里服务 `ctx.compaction`」为止的每一步都已验证，详见 `docs/MEASUREMENTS.md`。
+
+### 与别的后端组合
+
+策略核心是导出可复用的，别的后端大约二十行就能接入：
+
+```js
+import { RapidRefillTracker } from 'dsh-zcode-breaker/tracker';
+
+const tracker = new RapidRefillTracker({ toolTurnThreshold: 2, maxConsecutiveRapidRefills: 3 });
+tracker.noteToolTurn();
+const gate = tracker.gate();
+if (gate.blocked) throw new Error('rapid refill loop');
+const result = await myEngine.compact();
+if (result !== null) tracker.commitCompaction(gate.projectedConsecutiveRapidRefills);
+```
+
+## 测试
+
+```bash
+npm test
+```
+
+**19 个测试**、**2 个测试套件**，不需要任何服务、模型或会话：策略核心在 `test/tracker.test.js`，引擎接线在 `test/engine.test.js`。接线那套需要 peer 包可解析，解析不到时会跳过而不是失败。
+
+## 路线图
+
+- 跑模型驱动的验收：在真实会话里造出回填循环，看熔断真的跳闸。
+- 支持运行时选择父类，从而与用户偏好的任意后端组合。
+- 把策略核心提给上游 `@deepseek-ai/dsh-compaction-basic`。
+
+## 许可
+
+MIT

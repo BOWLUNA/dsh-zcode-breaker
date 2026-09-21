@@ -1,0 +1,128 @@
+# Every push and pull request runs the suite against a real harness install.
+#
+# Why CI installs a harness at all: this plugin subclasses
+# `@deepseek-ai/dsh-compaction-basic`, and the base engine's `Config` validator
+# is strict — it **throws on an unknown key** — while the harness's schema DSL
+# has changed between previews. Both the subclass and the suite therefore need
+# the real packages rather than stubs, and the suite cannot resolve them from a
+# fresh clone because they are peer dependencies.
+#
+# The matrix pins a version the manifest's `engines.dsh` covers;
+# `tools/verify-version-consistency.mjs` fails the build if those drift apart.
+name: test
+
+# This workflow only reads code and runs tests.
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        # The manifest's floor is node 22.19; 24 is the development runtime.
+        node-version: ['22', '24']
+        # The only harness version this project has been booted against by hand.
+        # Widening the matrix is a claim: do it after a real boot, not before.
+        dsh: ['0.1.5-rc.2']
+        include:
+          # Windows is the platform most likely to differ: this repository's
+          # tooling joins paths, creates junctions, and resolves the harness
+          # install differently there.
+          - os: windows-latest
+            node-version: '24'
+            dsh: '0.1.5-rc.2'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # The plugin ships no runtime dependencies; this install exists only so the
+      # suite can import the harness peers. `--no-save` keeps the repository free
+      # of a lockfile that CI generated.
+      - name: Install the harness for its peer packages
+        run: npm install --no-save --no-audit --no-fund @deepseek-ai/dsh@${{ matrix.dsh }}
+
+      # `@deepseek-ai/dsh-compaction-basic` is a dependency of the harness rather
+      # than a standalone install, so the peers are linked out of the harness
+      # tree instead of being installed from the registry.
+      - name: Link harness peers for the suite
+        run: node tools/link-harness-peers.mjs
+
+      - name: Syntax check
+        shell: bash
+        run: |
+          for f in index.js lib/*.js test/*.js test/*.mjs tools/*.mjs; do
+            node --check "$f"
+          done
+
+      # Two layers: the rapid-refill policy core (pure, no harness), and the
+      # engine's wiring against the real base class.
+      - name: Tests
+        run: npm test
+
+      # The declared `engines.dsh` range must still contain the version this
+      # matrix entry installed. A range that does not cover a tested version
+      # understates what the package works on; one that covers an untested
+      # version overstates it.
+      - name: Version consistency
+        run: node tools/verify-version-consistency.mjs --dsh ${{ matrix.dsh }}
+
+      # Both language files are equally authoritative, so an edit to one side
+      # alone fails here rather than waiting for a reader to notice.
+      - name: Bilingual pairing
+        run: node tools/verify-translation-pairing.mjs
+
+      # A number in a README is a claim like any other: the suite cannot see it,
+      # and this has already caught a drifted test count.
+      - name: Documented numbers
+        run: node tools/verify-doc-numbers.mjs
+
+      # Git Bash is what Windows contributors use, so the scripts are parsed
+      # under it as well as under bash on Linux.
+      - name: Installer scripts parse
+        shell: bash
+        run: |
+          bash -n install.sh
+          bash -n uninstall.sh
+
+      # The easiest packaging mistake is not "too many files" but "too few": a
+      # patch file or src/ file omitted from the `files` allowlist ships a
+      # package that installs and then does nothing. Assert against the real
+      # packlist rather than trusting the allowlist.
+      - name: Package self-check
+        shell: bash
+        run: |
+          npm pack --dry-run --json > "$RUNNER_TEMP/pack.json"
+          node -e '
+            const fs = require("fs");
+            const entries = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))[0].files.map((f) => f.path);
+            const need = ["index.js", "package.json", "README.md", "README.zh.md", "LICENSE", "examples/compaction-realm.patch.yml"];
+            const missing = need.filter((name) => !entries.includes(name));
+            const hasSource = entries.some((path) => path.startsWith("lib/"));
+            const stray = entries.filter((path) => /^(test|tools|docs|\.refs)\//.test(path));
+            console.log("packed:", entries.join(", "));
+            if (missing.length > 0) {
+              console.error("missing from the package:", JSON.stringify(missing));
+              process.exit(1);
+            }
+            if (!hasSource) {
+              console.error("lib/ is missing from the package");
+              process.exit(1);
+            }
+            if (stray.length > 0) {
+              console.error("non-runtime files leaked into the package:", JSON.stringify(stray));
+              process.exit(1);
+            }
+          ' "$RUNNER_TEMP/pack.json"

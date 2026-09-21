@@ -1,0 +1,6 @@
+# Bilingual pairing record: the git blob hash of each side when the two were
+# last confirmed to say the same thing. Both files are equally authoritative —
+# after editing either one, edit the other and re-record with:
+#   node tools/verify-translation-pairing.mjs --write
+docs/ARCHITECTURE.md: f3a0d0b57cd324b64d1ee69f8e30c6c0745d5752
+docs/ARCHITECTURE.zh.md: 419644f452c1d069ee67231046e0dc2f4b5d94b0

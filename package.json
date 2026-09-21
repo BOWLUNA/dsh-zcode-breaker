@@ -1,0 +1,69 @@
+{
+  "name": "dsh-zcode-breaker",
+  "version": "0.1.0",
+  "description": "Rapid-refill circuit breaker for DeepSeek Harness automatic compaction: stops the futile compact-refill-compact loop, which has no attempt bound and burns one summarization call per step, and tells the user which oversized read or tool output caused it.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BOWLUNA/dsh-zcode-breaker.git"
+  },
+  "homepage": "https://github.com/BOWLUNA/dsh-zcode-breaker#readme",
+  "bugs": {
+    "url": "https://github.com/BOWLUNA/dsh-zcode-breaker/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "cordis",
+    "zcode",
+    "compaction",
+    "context-window",
+    "circuit-breaker",
+    "rapid-refill",
+    "thrashing",
+    "agent-tools"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.1.5-rc.2 <0.2.0-0"
+  },
+  "scripts": {
+    "test": "node test/run.mjs",
+    "verify-translation-pairing": "node tools/verify-translation-pairing.mjs",
+    "verify-version-consistency": "node tools/verify-version-consistency.mjs",
+    "verify-doc-numbers": "node tools/verify-doc-numbers.mjs"
+  },
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./tracker": "./lib/tracker.js",
+    "./errors": "./lib/errors.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "examples",
+    "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
+    "CHANGELOG.zh.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "dsh": {
+    "compatibility": {
+      "dshReleases": {
+        "0.1.5-rc.2": "compatible"
+      }
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-compaction-basic": ">=0.1.5-rc.2 <0.2.0-0",
+    "@deepseek-ai/schemastery": "^3.18.2"
+  }
+}

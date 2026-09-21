@@ -1,0 +1,76 @@
+name: Bug report
+description: The breaker never tripped, compaction stopped silently, or the plugin would not load.
+title: '[bug] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please spend a minute on
+        [`docs/TROUBLESHOOTING.md`](https://github.com/BOWLUNA/dsh-zcode-breaker/blob/main/docs/TROUBLESHOOTING.md)
+        first — it documents the failures that were actually reproduced, each with a cause and a way out.
+
+        This plugin fails **silently** by design of its surroundings: the host catches errors thrown
+        from the automatic compaction path and continues the turn, so the visible symptom is usually
+        "compaction stopped and nobody said why" rather than an error message. That makes the details
+        below the difference between a report that can be diagnosed and one that cannot.
+
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DSH version
+      description: 'the output of `dsh --version`'
+      placeholder: 0.1.5-rc.2
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version / commit
+      description: 'the `version` in `package.json`, or `git rev-parse --short HEAD`'
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: Which symptom
+      options:
+        - The breaker never trips
+        - Compaction stopped and no reason was reported
+        - The plugin does not appear to be mounted
+        - Something else, explained under "What happens"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens
+      description: |
+        What you expected, what happened instead, and any log line you can find. The breaker writes one
+        warn line naming the consecutive refill count, the threshold and the last gap, and that line is
+        usually the whole diagnosis.
+      render: shell
+      value: |
+        expected: ...
+        got: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: The preset row and its config
+      description: |
+        The row you mounted, with its `config:` block. A missing key takes the documented default,
+        which may be the whole story: the defaults are tuned for a large context window.
+      render: yaml
+      value: |
+        - id: compaction-breaker
+          name: 'dsh-zcode-breaker'
+          config: {}
+    validations:
+      required: true

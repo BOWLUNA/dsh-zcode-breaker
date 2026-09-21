@@ -1,0 +1,52 @@
+name: Feature request
+description: A compaction behaviour you want the breaker to have.
+title: '[feat] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This plugin deliberately does **one** thing: it refuses an automatic compaction that would be
+        futile, and says so. Before opening a request, read the "What is deliberately not here" section
+        of
+        [`docs/ARCHITECTURE.md`](https://github.com/BOWLUNA/dsh-zcode-breaker/blob/main/docs/ARCHITECTURE.md):
+        summarization, retention and surface surgery are the base engine's, and this plugin adds no
+        client half.
+
+        A request that describes **a situation the current policy handles badly** is far easier to act
+        on than one that proposes a new key.
+
+  - type: textarea
+    id: situation
+    attributes:
+      label: What happens today
+      description: The compaction behaviour you are seeing, in your own words, with the numbers if you have them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-not-config
+    attributes:
+      label: Why the existing configuration is not enough
+      description: |
+        The breaker is tuned by `toolTurnThreshold` and `maxConsecutiveRapidRefills`. Which value have
+        you tried, and what did it do that you did not want? If the answer is "I did not try", that is
+        worth doing first.
+    validations:
+      required: true
+
+  - type: input
+    id: which-layer
+    attributes:
+      label: Which layer the change belongs to
+      placeholder: this plugin / the base engine / the harness
+    validations:
+      required: true
+
+  - type: textarea
+    id: risk
+    attributes:
+      label: Failure mode if the new behaviour is wrong
+      description: Compaction is an irreversible rewrite of history, so a wrong heuristic is worse than a missing one. What breaks first?
+    validations:
+      required: false

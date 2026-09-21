@@ -1,0 +1,23 @@
+# AGENTS.md
+
+Repository conventions for coding agents working here. Read this before changing anything.
+
+## Never break these
+
+1. There is no client half. Every surface this plugin adds is host-side, so adding a browser module changes the package shape rather than extending it.
+2. The engine wraps exactly one method. Trigger policy, retention and summary selection belong to the base engine; re-implementing them here would mean two places to keep correct.
+3. State must not live in private class fields. A realm served this plugin's service object without this class's private brands, and a private-field read throws inside the compaction path, where the host swallows it and auto-compaction simply stops.
+4. Every configuration key declared in `static Config` must be documented in both READMEs. The documented-numbers guard fails until it is, and that is deliberate.
+5. Both sides of a translated pair change together, and then the pairing hashes are re-recorded. Re-recording declares the pair aligned; it does not check it.
+
+## Guards
+
+- Run them in order: the suite, the pairing re-record, the documented numbers. The order matters because the number check reads real results.
+- A guard that cannot fail is not a guard. When you add one, prove it fails on a mutated copy before trusting it.
+
+## Facts worth not rediscovering
+
+- `--dump-config` synthesises configuration without applying plugins, so it cannot see a duplicate tool or service name. Only a real boot finds those.
+- A preset row resolves against the profile that is booting and never appears in the composition tree, so its absence from a dump means nothing.
+- Nothing here needs a GUI: a probe can compose the preset realm through the same two public calls the session controller makes.
+- Current shape: 13 configuration keys, 19 tests in 2 suites, declared for dsh `>=0.1.5-rc.2 <0.2.0-0`.

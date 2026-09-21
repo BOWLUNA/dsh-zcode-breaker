@@ -1,0 +1,67 @@
+# How to mount the breaker: inside an agent preset's compaction realm.
+#
+# WHY A PRESET AND NOT A PROFILE PATCH
+# ------------------------------------
+# `compaction-basic` exists twice in a stock DeepSeek Harness:
+#
+#   1. the HOST plane row in `@deepseek-ai/dsh-base/cordis.patch.yml`
+#   2. the row inside the AGENT preset's `compaction` group, which is declared
+#      `isolate: { compaction: true, toolResultPruner: true }`
+#      (e.g. `@deepseek-ai/dsh-agent-presets/presets/cordis/agent.cordis.yml`)
+#
+# Agent sessions resolve `ctx.compaction` inside that isolated realm, so a
+# profile-level bundle patch that disables the host row alone changes nothing
+# for the agent. The realm is composed from the preset YAML, which is loaded by
+# `dsh-agent-presets` at session start and is not part of the profile tree.
+#
+# The seam is single-slot: `ctx.provide()` throws
+# `service "compaction" has been registered at <fiber>` when a second provider
+# appears in the same isolate scope, and `ctx.reflect.set()` only accepts a
+# write from the owning fiber. So the breaker REPLACES the row; it cannot wrap
+# it from a sibling row.
+#
+# APPLY BY HAND
+# -------------
+# In your preset's `agent.cordis.yml`, replace this row:
+#
+#     - id: compaction-basic
+#       name: '@deepseek-ai/dsh-compaction-basic'
+#
+# with this one, keeping every other row in the group untouched:
+#
+#     - id: compaction-breaker
+#       name: 'dsh-compaction-breaker'
+#       config:
+#         thresholdRatio: 0.8          # every base-engine key still works
+#         toolTurnThreshold: 2         # rapid = refilled under N tool turns
+#         maxConsecutiveRapidRefills: 3
+#         announceInPrompt: true
+#
+# Copy the preset into your user preset directory instead of editing the
+# shipped one if you want to keep receiving upstream preset updates. The
+# discovery root for user presets is `.agent-presets`.
+
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    # Replaces the stock `compaction-basic` row — only one provider is allowed.
+    - id: compaction-breaker
+      name: 'dsh-compaction-breaker'
+      config:
+        toolTurnThreshold: 2
+        maxConsecutiveRapidRefills: 3
+        announceInPrompt: true
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
