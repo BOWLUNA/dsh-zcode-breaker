@@ -126,3 +126,35 @@ jobs:
               process.exit(1);
             }
           ' "$RUNNER_TEMP/pack.json"
+
+      # ── Boot check ──────────────────────────────────────────────────────────
+      # Every step above reads files. Not one of them *applies* a bundle patch,
+      # so a row naming a package that cannot be resolved passes all of them and
+      # fails only when somebody installs the plugin and restarts the harness.
+      #
+      # That is not hypothetical. `--dump-config` synthesises rows without
+      # applying them, so it resolves no row's package: with the row name
+      # deliberately broken it still exits 0, writes nothing to stderr, and
+      # still lists the row. Only a real boot resolves the row, and only a real
+      # boot reported the defect:
+      #
+      #   failed to import loader entry compaction-breaker (dsh-compaction-breaker):
+      #   Cannot find package 'dsh-compaction-breaker'
+      #
+      # `dsh plugin` is a thin pnpm forwarder, so pnpm must exist first.
+      - name: Ensure pnpm is available for the plugin command
+        shell: bash
+        run: |
+          if pnpm --version >/dev/null 2>&1; then
+            echo "pnpm $(pnpm --version) is already present"
+          else
+            npm install -g pnpm
+            echo "installed pnpm $(pnpm --version)"
+          fi
+
+      # Starts a real harness against a throwaway DSH_HOME and requires that the
+      # plugin installs, appears in the composed tree, and serves. Proved to go
+      # red on a mutated copy whose row name was changed back to the pre-rename
+      # name, and green again when it was restored.
+      - name: Boot check — the plugin must actually start
+        run: node tools/boot-check.mjs --port 31901 --timeout 40

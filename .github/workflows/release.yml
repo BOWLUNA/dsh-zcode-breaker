@@ -23,7 +23,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # `contents` must be write, not read: besides publishing to npm this workflow
+  # creates the GitHub Release. It used to be read and had no such step, so
+  # pushing a tag left the repository's Releases panel frozen on the previous
+  # version — the code was updated and the front page looked untouched. The
+  # Release for v1.0.0 had to be created by hand through the API because of
+  # this.
+  contents: write
   # Trusted Publishing (OIDC): npm confirms through GitHub's OIDC token that
   # this publish really came from this repository and this workflow, so no npm
   # token is needed — and there is nothing to expire or leak.
@@ -107,3 +113,49 @@ jobs:
           fi
           echo "publish failed for a reason other than missing credentials — see the log above"
           exit 1
+
+      # Create the GitHub Release, with the body lifted straight out of the
+      # CHANGELOG entry for this tag rather than retyped — retyped notes drift.
+      #
+      # `if: always()` is not decoration. npm publishing is a separate concern
+      # and can fail on its own; without this, a publish failure would also cost
+      # the Release and the front page would stay frozen, which is the symptom
+      # this step exists to remove. The tag check keeps a manual dispatch from
+      # trying to cut a release for a branch.
+      - name: Create the GitHub Release (body taken from the CHANGELOG)
+        if: ${{ always() && startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Do not inherit `-e` from the runner's shell invocation and hope. A
+          # failing extraction must abort this step: without it the `gh release
+          # create` below still runs and cuts a Release with stale notes from the
+          # previous version. Verified by running this very block with a
+          # nonexistent tag — `notes/verify-release-notes.mjs` in the ledger
+          # reproduces it.
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          VER="${TAG#v}"
+          node -e '
+            const fs = require("fs");
+            const [ver, file, out] = process.argv.slice(1);
+            const text = fs.readFileSync(file, "utf8");
+            // Both heading spellings are accepted on purpose: this CHANGELOG has
+            // used `## 1.0.0` and `## [0.1.0] - <date>`. A reader that can only
+            // match one of them is the reason a counter silently stopped working
+            // elsewhere in this repository.
+            const heading = new RegExp("^## \\[?" + ver.replace(/[.]/g, "\\.") + "\\]?(?:\\s|$)", "m");
+            const start = text.search(heading);
+            if (start === -1) { console.error("CHANGELOG has no section for " + ver); process.exit(1); }
+            const rest = text.slice(text.indexOf("\n", start) + 1);
+            const next = rest.search(/^## /m);
+            const body = (next === -1 ? rest : rest.slice(0, next)).replace(/^\n+/, "").trimEnd();
+            fs.writeFileSync(out, body + "\n");
+            console.error("release notes for " + ver + ": " + body.split("\n").length + " lines");
+          ' "$VER" CHANGELOG.md /tmp/release-notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — nothing to do"
+            exit 0
+          fi
+          gh release create "$TAG" --title "$TAG" --notes-file /tmp/release-notes.md
+          echo "Release $TAG created"

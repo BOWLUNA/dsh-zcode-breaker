@@ -18,8 +18,13 @@ node tools/verify-translation-pairing.mjs --write
 node tools/verify-doc-numbers.mjs
 bash -n install.sh && bash -n uninstall.sh
 node tools/verify-version-consistency.mjs --dsh 0.1.5-rc.2
-git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
+node tools/boot-check.mjs --port 31901 --timeout 40
+git tag -a v1.0.1 -m "v1.0.1" && git push origin v1.0.1
 ```
+
+The boot check needs a harness install to boot against: run `npm install --no-save @deepseek-ai/dsh@0.1.5-rc.2`
+and `node tools/link-harness-peers.mjs` first, or pass `--dsh-bin <path to @deepseek-ai/dsh/lib/bin.js>`.
+It also needs `pnpm` on PATH, because `dsh plugin` forwards to it.
 
 ## After the release
 

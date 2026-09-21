@@ -4,6 +4,19 @@ English | [中文](CHANGELOG.zh.md)
 
 All notable changes to this project are documented here. The format follows Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.0.1] - 2026-09-21
+
+No runtime change: `lib/`, `index.js` and the bundle patch are byte-identical to 1.0.0. This release fixes the machinery that was supposed to catch the class of defect that shipped in 1.0.0's neighbourhood.
+
+### Added
+
+- `tools/boot-check.mjs` — installs the plugin into a throwaway `DSH_HOME`, requires the row to appear in the composed tree, and then actually starts a harness and requires it to serve. Every other check in this repository reads files, and none of them *applies* a bundle patch, so a row naming a package that cannot be resolved passed all of them.
+
+### Fixed
+
+- CI now boots the plugin on every matrix leg. The check was proved to fail on a mutated copy whose row name was changed back to the pre-rename name — and on that copy `--dump-config` still exited 0, wrote nothing to stderr, and still listed the row, which is why file-reading checks cannot replace it.
+- The release workflow creates the GitHub Release. `permissions.contents` was `read` and there was no such step, so pushing a tag left the Releases panel frozen on the previous version; the v1.0.0 Release had been created by hand through the API. The step is guarded with `if: always()` and pins `set -euo pipefail`, so a failing CHANGELOG extraction aborts instead of cutting a Release with the previous version's notes.
+
 ## 1.0.0
 
 First public release. The 0.1.x entry below was development history and was never published, so this is the first version anyone can install from a registry.

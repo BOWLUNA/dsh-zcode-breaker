@@ -18,8 +18,13 @@ node tools/verify-translation-pairing.mjs --write
 node tools/verify-doc-numbers.mjs
 bash -n install.sh && bash -n uninstall.sh
 node tools/verify-version-consistency.mjs --dsh 0.1.5-rc.2
-git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
+node tools/boot-check.mjs --port 31901 --timeout 40
+git tag -a v1.0.1 -m "v1.0.1" && git push origin v1.0.1
 ```
+
+启动自检需要一个可启动的 harness：先跑 `npm install --no-save @deepseek-ai/dsh@0.1.5-rc.2`
+与 `node tools/link-harness-peers.mjs`，或者用 `--dsh-bin <指向 @deepseek-ai/dsh/lib/bin.js 的路径>` 指定。
+它还需要 PATH 上有 `pnpm`，因为 `dsh plugin` 会把它转发过去。
 
 ## 发布之后
 
