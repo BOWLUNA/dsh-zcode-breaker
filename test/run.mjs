@@ -38,18 +38,38 @@ console.log(`suites: ${String(suites.length)}`);
 for (const suite of suites) console.log(`  ${suite}`);
 console.log("");
 
-const result = spawnSync(process.execPath, ["--test", ...suites.map((name) => join(TEST_DIR, name))], {
-	cwd: REPO,
-	encoding: "utf8",
-	// stdout is captured for parsing; stderr streams through so a failure is
-	// visible while it happens rather than only in the summary.
-	stdio: ["ignore", "pipe", "inherit"],
-	timeout: 900_000,
-});
+const result = spawnSync(
+	process.execPath,
+	[
+		// The reporter is pinned because its default is version-dependent: Node 22
+		// prints TAP (`# tests N`) while Node 24 prints the spec reporter
+		// (`ℹ tests N`) even when stdout is not a terminal. Relying on the
+		// default made this file exit 2 in CI on Node 24 with every test passing.
+		"--test",
+		"--test-reporter=tap",
+		...suites.map((name) => join(TEST_DIR, name)),
+	],
+	{
+		cwd: REPO,
+		encoding: "utf8",
+		// stdout is captured for parsing; stderr streams through so a failure is
+		// visible while it happens rather than only in the summary.
+		stdio: ["ignore", "pipe", "inherit"],
+		timeout: 900_000,
+	},
+);
 
 const stdout = typeof result.stdout === "string" ? result.stdout : "";
+/**
+ * Read one counter from the runner summary.
+ *
+ * Both spellings are accepted on purpose. The reporter is pinned to TAP above,
+ * so `# tests 19` is what should appear — but a counter that can only be read
+ * one way is how this file silently stopped working when a Node release changed
+ * its default reporter, and widening the reader costs nothing.
+ */
 const count = (label) => {
-	const match = new RegExp(`^# ${label} (\\d+)$`, "m").exec(stdout);
+	const match = new RegExp(`^(?:#|ℹ) ${label} (\\d+)$`, "m").exec(stdout);
 	return match === null ? null : Number(match[1]);
 };
 
