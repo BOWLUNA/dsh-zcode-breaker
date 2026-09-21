@@ -117,7 +117,12 @@ if (bin === undefined) {
 // `dsh plugin` is a thin pnpm forwarder: it runs `pnpm` with cwd set to the
 // profile. Without pnpm it fails with a message that reads like a plugin
 // problem, so it is checked for up front and reported as its own cause.
-const pnpmProbe = spawnSync("pnpm", ["--version"], { encoding: "utf8", shell: process.platform === "win32" });
+//
+// The command is passed as one string rather than as an argv array on purpose:
+// `shell: true` together with an array is what Node deprecates (DEP0190), and a
+// deprecation banner printed by a guard is noise in the step's output — the kind
+// of noise that teaches people to skim guard output.
+const pnpmProbe = spawnSync("pnpm --version", { encoding: "utf8", shell: true });
 if (pnpmProbe.status !== 0) {
 	fail(
 		"pnpm is not on PATH. `dsh plugin` forwards to pnpm, so the install step cannot run. " +
