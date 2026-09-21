@@ -33,11 +33,16 @@ compaction (step pressure): shadowed N surface nodes (seqs A-B, ~T tokens)
 
 其余全部保留父类行为：触发策略、保留比例、surface 改写、工具配对安全与摘要实现。
 
-## 装配：这是 preset 行，不是 profile patch
+## 两个平面，以及为什么两个都要管
 
-这是最容易搞错的地方。标准 harness 里 `compaction-basic` 存在**两份**：一份是 `@deepseek-ai/dsh-base` 的宿主平面行，另一份在 agent preset 的 compaction 分组里，该分组声明了 `isolate: { compaction: true, toolResultPruner: true }`。agent 会话的 `ctx.compaction` 解析到那个隔离域里，所以停掉宿主行对 agent 毫无影响；而那个域由 preset 的 YAML 组成，它从来不出现在 `dsh --profile web --dump-config` 里。
+标准 harness 里 `compaction-basic` 存在**两份**：一份是 `@deepseek-ai/dsh-base` 的宿主平面行，另一份在 agent preset 的 compaction 分组里，该分组声明了 `isolate: { compaction: true, toolResultPruner: true }`。agent 会话的 `ctx.compaction` 解析到那个隔离域里，而不加入任何 preset 的会话解析到宿主那一行。这就是为什么只打 profile 补丁改变不了 agent 的压缩，也是本节后半段那个 preset 行存在的原因。
 
-这个接缝还是**单槽位**的：同一 isolate 作用域出现第二个 provider 会让 `ctx.provide()` 抛错，而 `ctx.reflect.set()` 只接受持有该服务的 fiber 的写入。因此本插件是**替换**那一行，无法从旁边的行去包覆它。
+这个接缝是**单槽位**的：同一 isolate 作用域出现第二个 provider 会让 `ctx.provide()` 抛错，而 `ctx.reflect.set()` 只接受持有该服务的 fiber 的写入。因此每个平面都靠**替换它那一行**来覆盖，而不是遮蔽它。
+
+| 平面 | 服务谁 | 本包怎么覆盖它 |
+| --- | --- | --- |
+| 宿主 | 不加入任何 agent preset 的会话 | 自动，通过安装器挂上的 bundle patch |
+| agent 域 | 每一个普通会话 | 在你的 agent preset 里替换一行，因为任何 profile 补丁都够不到一个域 |
 
 ### 安装
 
@@ -45,9 +50,9 @@ compaction (step pressure): shadowed N surface nodes (seqs A-B, ~T tokens)
 dsh plugin --profile web add dsh-zcode-breaker
 ```
 
-安装时会提示本包没有声明 `dsh.bundle`。这是预期的：本插件由 preset 行引用，而不是作为 profile 层挂载。
+安装会挂上 `cordis.patch.yml`，它把宿主平面的 `compaction-basic` 行停掉，把这个引擎放到它原来的位置。之所以是替换而不是包覆，是单槽位逼出来的。
 
-接着替换你的 preset 里 `agent.cordis.yml` 的那一行：
+接着，为了 agent 会话，替换你的 preset 里 `agent.cordis.yml` 中 `compaction` 分组的那一行：
 
 ```yaml
 - id: compaction

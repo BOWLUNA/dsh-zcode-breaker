@@ -47,6 +47,7 @@
     "index.js",
     "lib",
     "examples",
+    "cordis.patch.yml",
     "README.md",
     "README.zh.md",
     "CHANGELOG.md",
@@ -55,6 +56,9 @@
     "package.json"
   ],
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "compatibility": {
       "dshReleases": {
         "0.1.5-rc.2": "compatible"

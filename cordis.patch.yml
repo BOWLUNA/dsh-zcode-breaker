@@ -1,0 +1,18 @@
+# Bundle patch: what `dsh plugin --profile <name> add dsh-zcode-breaker` mounts.
+#
+# `ctx.compaction` is a single-slot service: a second provider in the same
+# isolate scope makes `ctx.provide()` throw, and `ctx.reflect.set()` accepts a
+# write only from the owning fiber. The host engine is therefore disabled rather
+# than shadowed, and this engine takes its place.
+#
+# This is the HOST plane. The engine that an *agent session* actually uses comes
+# from its agent preset's `compaction` group, a separate composition that no
+# profile patch can reach. Mounting this package therefore covers host-plane
+# sessions; covering agent sessions additionally takes one row in the preset.
+# See the README's "Two planes" section.
+- id: compaction-basic
+  disabled: true
+
+- insert:
+    - id: compaction-breaker
+      name: 'dsh-zcode-breaker'

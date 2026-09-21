@@ -33,11 +33,16 @@ It extends `BasicCompactionEngine` and wraps exactly one method, `compactIfNeede
 
 Everything else stays the base engine's: trigger policy, retention, surface mutation, tool-pairing safety and summarization.
 
-## Mounting: a preset row, not a profile patch
+## Two planes, and why both matter
 
-This is the part most likely to be got wrong. `compaction-basic` exists twice in a stock harness: once as a host-plane row in `@deepseek-ai/dsh-base`, and once inside the agent preset's compaction group, which is declared `isolate: { compaction: true, toolResultPruner: true }`. An agent session resolves `ctx.compaction` inside that isolated realm, so disabling the host row changes nothing for the agent, and the realm is composed from preset YAML that never appears in `dsh --profile web --dump-config`.
+`compaction-basic` exists twice in a stock harness: once as a host-plane row in `@deepseek-ai/dsh-base`, and once inside the agent preset's `compaction` group, which is declared `isolate: { compaction: true, toolResultPruner: true }`. An agent session resolves `ctx.compaction` inside that isolated realm, while a session that joins no preset resolves the host row. That is why a profile patch alone cannot change an agent's compaction, and why the preset row in the second half of this section exists.
 
-The seam is also single-slot: a second provider in the same isolate scope makes `ctx.provide()` throw, and `ctx.reflect.set()` accepts writes only from the owning fiber. This plugin therefore replaces that row; it cannot wrap it from a sibling row.
+The seam is single-slot: a second provider in the same isolate scope makes `ctx.provide()` throw, and `ctx.reflect.set()` accepts writes only from the owning fiber. Each plane is therefore covered by replacing its row, never by shadowing it.
+
+| Plane | Who it serves | How this package covers it |
+| --- | --- | --- |
+| Host | sessions that join no agent preset | automatically, through the bundle patch the installer mounts |
+| Agent realm | every ordinary session | one row replaced inside your agent preset, because no profile patch can reach a realm |
 
 ### Install
 
@@ -45,9 +50,9 @@ The seam is also single-slot: a second provider in the same isolate scope makes 
 dsh plugin --profile web add dsh-zcode-breaker
 ```
 
-The install prints a warning that the package declares no `dsh.bundle`. That is expected: this plugin is referenced by a preset row rather than mounted as a profile layer.
+The install mounts `cordis.patch.yml`, which disables the host-plane `compaction-basic` row and puts this engine in its place. Replacing rather than wrapping is forced by the single slot.
 
-Then replace the row in your preset's `agent.cordis.yml`:
+Then, for agent sessions, replace the row inside your preset's `compaction` group in `agent.cordis.yml`:
 
 ```yaml
 - id: compaction
