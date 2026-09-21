@@ -1,6 +1,6 @@
 {
   "name": "dsh-zcode-breaker",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Rapid-refill circuit breaker for DeepSeek Harness automatic compaction: stops the futile compact-refill-compact loop, which has no attempt bound and burns one summarization call per step, and tells the user which oversized read or tool output caused it.",
   "license": "MIT",
   "type": "module",

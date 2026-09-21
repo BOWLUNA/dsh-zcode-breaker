@@ -4,7 +4,26 @@ English | [中文](CHANGELOG.zh.md)
 
 All notable changes to this project are documented here. The format follows Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 1.0.0
+
+First public release. The 0.1.x entry below was development history and was never published, so this is the first version anyone can install from a registry.
+
+### Included
+
+- A rapid-refill circuit breaker for automatic compaction: it wraps `compactIfNeeded` and refuses an attempt that would be futile.
+- The refusal happens before the summarization call and it latches, so the loop stops rather than merely slowing down.
+- One prompt section injected while tripped, because the host swallows errors thrown from the automatic path and would otherwise leave the user with silently disabled compaction.
+- The `/compaction-breaker` command, with `status` and `reset`, plus a reusable policy core exported at `dsh-zcode-breaker/tracker`.
+- A bundle patch that covers host-plane sessions, plus the single preset row that covers agent sessions.
+
+### Compatibility
+
+- Developed and verified on dsh 0.1.5-rc.2. The range this package declares lives in `engines.dsh` and is deliberately not restated here.
+- Host APIs used: `ctx.compaction`, `ctx.tokenMeter`, `ctx.sessions`, `ctx.systemPrompt`, `ctx.commands`, `ctx.logger`, and the `session/event` event.
+
 ## [0.1.0] - 2026-09-21
+
+Development line, never published.
 
 ### Added
 

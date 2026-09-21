@@ -4,7 +4,26 @@
 
 本项目的所有重要变更都记录在这里。格式遵循 Keep a Changelog，版本号遵循语义化版本。
 
+## 1.0.0
+
+首个公开发布版。下面那条 0.1.x 属于开发期记录，从未发布过，所以这是第一个能从 registry 装到的版本。
+
+### 包含
+
+- 自动压缩的 rapid-refill 熔断器：它包住 `compactIfNeeded`，拒绝一次徒劳的压缩尝试。
+- 拒绝发生在摘要调用之前，而且会**锁定**，所以这个循环是停下来了，而不只是变慢。
+- 熔断期间注入一个 prompt 段：宿主会吞掉从自动路径抛出的错误，否则用户只会看到压缩被静默关掉。
+- `/compaction-breaker` 命令，带 `status` 与 `reset`；另有可复用的策略核心导出在 `dsh-zcode-breaker/tracker`。
+- 一个覆盖宿主平面会话的 bundle patch，以及覆盖 agent 会话的那一行 preset。
+
+### 兼容性
+
+- 在 dsh 0.1.5-rc.2 上开发并验证过。本包声明的区间写在 `engines.dsh` 里，这里刻意不复述。
+- 用到的宿主 API：`ctx.compaction`、`ctx.tokenMeter`、`ctx.sessions`、`ctx.systemPrompt`、`ctx.commands`、`ctx.logger`，以及 `session/event` 事件。
+
 ## [0.1.0] - 2026-09-21
+
+开发期记录，从未发布。
 
 ### 新增
 

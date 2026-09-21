@@ -74,14 +74,36 @@ jobs:
       # Idempotent: re-running a tag npm already has does nothing.
       # Both the name and the version are read from package.json, so renaming
       # the package cannot leave a stale literal here.
+      #
+      # Publishing can legitimately be impossible — no NPM_TOKEN and no trusted
+      # publisher configured yet. That is a configuration state rather than a
+      # broken release, so it is reported with the two ways to fix it and the
+      # job still succeeds. Every other failure still fails the job: a red run
+      # that means "credentials missing" trains people to ignore red runs.
       - name: Publish (skips a version npm already has)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          set -o pipefail
           NAME="$(node -p "require('./package.json').name")"
           VERSION="$(node -p "require('./package.json').version")"
           if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
             echo "${NAME}@${VERSION} is already on npm — nothing to do"
             exit 0
           fi
-          npm publish --tag latest
+          if npm publish --tag latest 2>&1 | tee /tmp/publish.log; then
+            echo "published ${NAME}@${VERSION}"
+            exit 0
+          fi
+          if grep -qE 'ENEEDAUTH|E401|EOTP|need auth|requires auth' /tmp/publish.log; then
+            echo ""
+            echo "::notice::npm publishing is not configured for this repository — the release itself is fine."
+            echo "Two ways to enable it:"
+            echo "  1. add a repository secret NPM_TOKEN (an *Automation* token, not a session token), or"
+            echo "  2. on npmjs.com, add a Trusted Publisher for this package:"
+            echo "       Publisher: GitHub Actions, Repository: this repo, Workflow: release.yml"
+            echo "Then re-run this workflow for the existing tag."
+            exit 0
+          fi
+          echo "publish failed for a reason other than missing credentials — see the log above"
+          exit 1

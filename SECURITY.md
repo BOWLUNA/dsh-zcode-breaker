@@ -8,7 +8,7 @@ Security fixes land on the current release line. Older versions are not patched.
 
 | Version | Supported |
 | --- | --- |
-| `0.1.0` | yes |
+| `1.0.0` | yes |
 
 ## Reporting a vulnerability
 
