@@ -41,26 +41,23 @@ const PEERS = ["dsh-compaction-basic", "dsh-session", "schemastery", "cordis"];
 const printOnly = process.argv.includes("--print");
 
 /**
- * Standard install locations for a harness, most specific first.
+ * Where to look for a harness install, most specific first.
  *
- * `DSH_INSTALL` wins so that moving a harness is one environment variable rather
- * than a hunt through every link. The hard-coded Windows path is the last
- * resort on this machine only; CI never reaches it, because there the harness is
- * a normal `node_modules` dependency.
+ * `DSH_INSTALL` is the only supported way to point this at a given machine, so
+ * moving a harness is one environment variable rather than a hunt through every
+ * link. There is deliberately **no hard-coded path** here: this repository is
+ * public, and one machine's directory is not a fallback for anybody else — it is
+ * a dead entry that makes the discovery look like it ran. CI never needs it,
+ * because there the harness is an ordinary `@deepseek-ai/dsh` dependency and
+ * `findScope` finds its nested tree first.
  *
- * Both previous locations — `C:\BL\AI\DSH Desktop\resources\app` and
- * `%APPDATA%\dsh-desktop\harness` — were moved on 2026-09-21 and are now in the
- * Recycle Bin. Probing them produced a dead entry in this list and nothing else,
- * so they are gone.
+ * When nothing is found the warning below names `DSH_INSTALL`; on a machine that
+ * has not set it, that is faster than debugging an import error later.
  */
 function harnessRoots() {
 	const roots = [];
 	if (process.env.DSH_INSTALL !== undefined) roots.push(process.env.DSH_INSTALL);
-	if (process.platform === "win32") {
-		roots.push("C:/BL/AI/dsh-harness");
-	} else {
-		roots.push(join(process.env.HOME ?? "", ".dsh", "profiles"));
-	}
+	if (process.platform !== "win32") roots.push(join(process.env.HOME ?? "", ".dsh", "profiles"));
 	return roots.filter((root) => root.length > 0);
 }
 

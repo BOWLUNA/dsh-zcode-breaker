@@ -23,4 +23,4 @@ Repository conventions for coding agents working here. Read this before changing
 - `--dump-config` synthesises configuration without applying plugins, so it cannot see a duplicate tool or service name — and it does not resolve a row's package either. With a row name deliberately pointing at a package that does not exist, it still exits 0, writes nothing to stderr, and still lists the row. Only a real boot reports `Cannot find package '<name>'`.
 - A preset row resolves against the profile that is booting and never appears in the composition tree, so its absence from a dump means nothing.
 - Nothing here needs a GUI: a probe can compose the preset realm through the same two public calls the session controller makes.
-- Current shape: 13 configuration keys, 19 tests in 2 suites, declared for dsh `>=0.1.5-rc.2 <0.2.0-0`.
+- Current shape: 13 configuration keys, 19 tests in 2 suites, declared for dsh `>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0`.

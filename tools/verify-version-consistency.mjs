@@ -11,11 +11,15 @@
  *   2. every version the CI matrix installs,
  *   3. the version the current run installed, when `--dsh <version>` is passed.
  *
- * The syntax supported is the subset package.json uses: space-separated
- * comparators (`>=0.1.5-rc.2 <0.2.0-0`). That is deliberate — a full semver
- * implementation is a dependency this plugin does not need.
+ * The syntax supported is the subset package.json uses: `||`-separated groups of
+ * space-separated comparators, e.g.
+ * `>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0`. That is deliberate — a
+ * full semver implementation is a dependency this plugin does not need. What is
+ * *not* optional is node-semver's prerelease rule, because without it this guard
+ * reports the opposite of what an install will do; see `SELFTEST`.
  *
  * Run: node tools/verify-version-consistency.mjs [--dsh <version>]
+ *      node tools/verify-version-consistency.mjs --selftest
  * Exit: 0 when consistent; 1 listing each version outside the range.
  */
 
@@ -29,13 +33,21 @@ const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
  * Harness versions this project has been exercised against by hand — a real
  * boot plus a real turn, not just the suite. Update it when you test a new one.
  *
- * 0.1.5-rc.2 is the only version verified so far: a real `--profile web` boot in
- * an isolated DSH_HOME, a real agent preset realm composed through
- * `agentPresets.mount()`, and the engine observably serving `ctx.compaction`.
+ * 0.1.5-rc.2 — a real `--profile web` boot in an isolated DSH_HOME, a real agent
+ * preset realm composed through `agentPresets.mount()`, and the engine serving
+ * `ctx.compaction`.
+ *
+ * 0.1.6-alpha.2 — added 2026-09-22 after a real boot in this repository's own lab
+ * (`C:/Users/BOWLUNA/Desktop/DSHTEST/breaker`): `dsh plugin --profile web add`
+ * exit 0, `--dump-config` exit 0 / 571 lines / stderr 0 bytes, and
+ * `--port 32100 --no-open` answering at t=1500ms with stderr 0 bytes. This is the
+ * line the WSL harness runs, so the declared range has to include it — which is
+ * why the range carries one comparator group per line.
+ *
  * The declared range is wider than this list on purpose — it is what the
  * package is expected to work on, while this list is what has been proven.
  */
-const TESTED = ["0.1.5-rc.2"];
+const TESTED = ["0.1.5-rc.2", "0.1.6-alpha.2"];
 
 /**
  * Parse `x.y.z` or `x.y.z-pre`.
@@ -68,16 +80,18 @@ function compare(a, b) {
 }
 
 /**
- * Evaluate a space-separated comparator list.
+ * Evaluate one comparator group (no `||`), with node-semver's prerelease rule.
  *
  * @param version - the candidate version.
- * @param range - the declared range.
- * @returns whether the version satisfies every comparator.
+ * @param group - one space-separated comparator list.
+ * @returns whether the version satisfies every comparator **and** the prerelease rule.
  */
-function satisfies(version, range) {
+function satisfiesGroup(version, group) {
 	const parsed = parseVersion(version);
 	if (parsed === null) return false;
-	for (const clause of String(range).trim().split(/\s+/)) {
+	let sameTuplePrerelease = false;
+	for (const clause of String(group).trim().split(/\s+/)) {
+		if (clause.length === 0) continue;
 		const match = /^(>=|<=|>|<|=)?(.+)$/.exec(clause);
 		if (match === null) continue;
 		const bound = parseVersion(match[2]);
@@ -89,8 +103,71 @@ function satisfies(version, range) {
 		if (operator === ">" && order <= 0) return false;
 		if (operator === "<" && order >= 0) return false;
 		if (operator === "=" && order !== 0) return false;
+		if (bound.pre !== null && bound.major === parsed.major && bound.minor === parsed.minor && bound.patch === parsed.patch) {
+			sameTuplePrerelease = true;
+		}
 	}
+	// node-semver: a prerelease is only allowed when some comparator carries a
+	// prerelease *and* shares the candidate's major.minor.patch tuple. Skipping
+	// this makes the guard report the opposite of what an install will do.
+	if (parsed.pre !== null && !sameTuplePrerelease) return false;
 	return true;
+}
+
+/**
+ * Evaluate a range: `||`-separated groups, satisfied when any group matches.
+ *
+ * @param version - the candidate version.
+ * @param range - the declared range, e.g. `>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0`.
+ * @returns whether the version satisfies the range.
+ */
+function satisfies(version, range) {
+	return String(range)
+		.split("||")
+		.some((group) => satisfiesGroup(version, group));
+}
+
+/**
+ * The semantics above, pinned against real `semver` output.
+ *
+ * Measured with semver 7.8.5 against the declared range — this table is why the
+ * guard is allowed to claim anything about a prerelease at all. Both the old
+ * naive comparator and this one accept `0.1.5-rc.2`; they disagree on
+ * `0.1.6-alpha.2`, and the naive one was the wrong answer:
+ *
+ *   >=0.1.5-rc.2 <0.2.0-0                        0.1.6-alpha.2 → false
+ *   >=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 …   0.1.6-alpha.2 → true
+ *
+ * Run with `--selftest`; CI runs it as part of this guard so a refactor of the
+ * comparator cannot quietly reintroduce the false green.
+ */
+const SELFTEST = [
+	["0.1.5-rc.2", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0", true],
+	["0.1.5", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0", true],
+	["0.1.6-alpha.1", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0", true],
+	["0.1.6-alpha.2", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0", true],
+	["0.1.6", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0", true],
+	["0.1.7", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0", true],
+	["0.2.0-alpha.1", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0", false],
+	["0.2.0", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0", false],
+	["0.3.0", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0", false],
+	// The prerelease rule on its own, with a single group: the naive comparator
+	// accepted this one, which is the false green that motivated the fix.
+	["0.1.6-alpha.2", ">=0.1.5-rc.2 <0.2.0-0", false],
+	["0.1.5-rc.2", ">=0.1.5-rc.2 <0.2.0-0", true],
+];
+
+if (process.argv.includes("--selftest")) {
+	const wrong = SELFTEST.filter(([version, range, expected]) => satisfies(version, range) !== expected);
+	for (const [version, , expected] of wrong) {
+		console.error(`✗ selftest: ${version} should be ${String(expected)}`);
+	}
+	if (wrong.length > 0) {
+		console.error(`version consistency selftest: ${String(wrong.length)} of ${String(SELFTEST.length)} cases wrong`);
+		process.exit(1);
+	}
+	console.log(`✓ version consistency selftest: ${String(SELFTEST.length)} cases match semver 7.8.5`);
+	process.exit(0);
 }
 
 const manifest = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
@@ -101,6 +178,14 @@ if (range === undefined) {
 }
 
 const failures = [];
+
+// The comparator's own semantics first: a wrong comparator would make every
+// conclusion below meaningless, and would do it silently.
+for (const [version, sampleRange, expected] of SELFTEST) {
+	if (satisfies(version, sampleRange) !== expected) {
+		failures.push(`selftest: ${version} against ${sampleRange} should be ${String(expected)}`);
+	}
+}
 
 for (const version of TESTED) {
 	if (!satisfies(version, range)) {

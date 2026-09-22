@@ -30,9 +30,11 @@ jobs:
         os: [ubuntu-latest]
         # The manifest's floor is node 22.19; 24 is the development runtime.
         node-version: ['22', '24']
-        # The only harness version this project has been booted against by hand.
-        # Widening the matrix is a claim: do it after a real boot, not before.
-        dsh: ['0.1.5-rc.2']
+        # Both harness lines this project has been booted against by hand, in this
+        # repository's own lab. Widening the matrix is a claim: do it after a real
+        # boot, not before — and drop a version here when the declared range stops
+        # covering it, or `tools/verify-version-consistency.mjs` fails the build.
+        dsh: ['0.1.5-rc.2', '0.1.6-alpha.2']
         include:
           # Windows is the platform most likely to differ: this repository's
           # tooling joins paths, creates junctions, and resolves the harness
@@ -152,4 +154,4 @@ jobs:
       # explicit `::warning::` saying so — a silently skipped guard is the same
       # as no guard.
       - name: 6) Boot check — the plugin must really install and start
-        run: node tools/boot-check.mjs --port 31901 --timeout 40
+        run: node tools/boot-check.mjs --port 32100 --timeout 40

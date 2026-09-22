@@ -60,8 +60,8 @@
  * assuming it makes every CI leg fail with `plugin add exited 127`, which reads
  * like a plugin fault.
  *
- * Run: node tools/boot-check.mjs --port 31901
- *      node tools/boot-check.mjs --port 31901 --keep     # leave the sandbox
+ * Run: node tools/boot-check.mjs --port 32100
+ *      node tools/boot-check.mjs --port 32100 --keep     # leave the sandbox
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -79,7 +79,7 @@ function flag(name, fallback) {
 	return at === -1 ? fallback : process.argv[at + 1];
 }
 
-const PORT = Number(flag("port", "31901"));
+const PORT = Number(flag("port", "32100"));
 const TIMEOUT_S = Number(flag("timeout", "40"));
 const SETTLE_MS = Number(flag("settle", "2000"));
 const KEEP = process.argv.includes("--keep");
@@ -87,13 +87,18 @@ const KEEP = process.argv.includes("--keep");
 const exitEnvironment = (message) => {
 	console.error(`✗ environment: ${message}`);
 	console.error("");
-	console.error("  The four exports that point at a harness on this machine:");
-	console.error('    export DSH_HOME="C:/BL/AI/dsh-harness/harness"');
-	console.error('    export DSH_INSTALL="C:/BL/AI/dsh-harness"');
-	console.error('    N="C:/BL/AI/dsh-harness/node_modules/node/bin/node.exe"');
-	console.error('    D="C:/BL/AI/dsh-harness/node_modules/@deepseek-ai/dsh/lib/bin.js"');
-	console.error("    \"$N\" \"$D\" --version        # expect the version this repo declares");
-	console.error("    node tools/boot-check.mjs --port 31901 --dsh-bin \"$D\"");
+	console.error("  Point it at a harness with one variable — no path in this repository is");
+	console.error("  hard-coded, because one machine's directory is not a fallback for yours:");
+	console.error("");
+	console.error('    export DSH_INSTALL="<the directory holding node_modules/@deepseek-ai/dsh>"');
+	console.error('    node tools/boot-check.mjs --port 32100');
+	console.error("");
+	console.error("  A full local lab, as used for this repository's own measurements:");
+	console.error('    BASE="C:/Users/BOWLUNA/Desktop/DSHTEST/breaker"   # your own lab, see the ledger');
+	console.error('    export DSH_INSTALL="$BASE/dsh"');
+	console.error('    export DSH_HOME="$BASE/home"');
+	console.error('    D="C:/Users/BOWLUNA/Desktop/DSHTEST/breaker/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js"');
+	console.error('    node tools/boot-check.mjs --port 32100 --dsh-bin "$D"');
 	console.error("");
 	console.error("  On Linux/WSL, `export PATH=\"$HOME/.local/bin:$PATH\"` first — dsh lives there.");
 	process.exit(2);

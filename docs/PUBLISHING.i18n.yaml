@@ -2,5 +2,5 @@
 # last confirmed to say the same thing. Both files are equally authoritative —
 # after editing either one, edit the other and re-record with:
 #   node tools/verify-translation-pairing.mjs --write
-docs/PUBLISHING.md: 5c3d63b14f54b16f7e9f678517c99fcf2294b92b
-docs/PUBLISHING.zh.md: bc76cd5d2b4b8b4d025b4d195f8c7aa9e0a8c617
+docs/PUBLISHING.md: 4115213e907481f7f217d71363c36f1536dc2bfa
+docs/PUBLISHING.zh.md: bab1be7fa3c3ca1d8737698843428a4cc72e681c

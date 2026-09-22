@@ -7,7 +7,7 @@
 #   $ git ls-files -s node_modules
 #   120000 f8d42d89a377dc3d95711046d86244e96ef6deb2 0	node_modules
 #   $ git cat-file -p f8d42d8
-#   /mnt/c/BL/AI/DSH Desktop/resources/app/node_modules
+#   <a long-gone absolute path to a harness install>
 #
 # Two consequences, both measured: `git status` permanently showed ` D node_modules`,
 # and a single `git restore` would recreate that dead link in the repository root —

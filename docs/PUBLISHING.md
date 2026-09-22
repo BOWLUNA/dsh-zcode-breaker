@@ -18,7 +18,7 @@ node tools/verify-translation-pairing.mjs --write
 node tools/verify-doc-numbers.mjs
 bash -n install.sh && bash -n uninstall.sh
 node tools/verify-version-consistency.mjs --dsh 0.1.5-rc.2
-node tools/boot-check.mjs --port 31901 --timeout 40
+node tools/boot-check.mjs --port 32100 --timeout 40
 git tag -a v1.0.1 -m "v1.0.1" && git push origin v1.0.1
 ```
 
