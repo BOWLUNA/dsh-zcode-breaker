@@ -20,16 +20,30 @@ dsh plugin --profile web add dsh-zcode-breaker
 
 ## 从 ZCode 取了什么，又在哪里走得更远
 
-每一行都应该可核对：「取了什么」那一列指向 ZCode 的具体文件与行号，「走得更远」那一列必须是本插件真的做到、而 ZCode 那条路径做不到的事。没有可主张的，就如实写「暂未超过」，不编。
+每一行都应该可核对。中间那列指向 ZCode 源码的**文件与行号**，而且这些引用不是手打上去就信的：控制工作区的 `verify-zcode-citations.mjs` 会把每一条拿到一份检出里去解析，并把它找到的那一行原文打出来。最后一列给的是**你现在就能跑的命令**；没有可主张的，就如实写「暂未超过」，不编。
+
+其中两条路径在 2026-09-22 之前是**错的**：写的是 `core/src/compact/turn-loop-state.ts` 与 `core/src/compact/runtime/methods/compact.ts`，那是从一份设计笔记里抄的，不是从源码里核的。真实位置在 `packages/core/src/runtime/methods/` 下。守卫抓不到这个错，因为**不带行号的路径根本不算它要看的引用** —— 这也正是中间那列现在必须带行号的原因。
 
 | ZCode 有什么 | 本插件取了什么 | 本插件多了什么（**优于**在哪） | 证据 |
 | --- | --- | --- | --- |
-| rapid-refill 状态机 —— `consecutiveRapidRefills`、`toolTurnsSinceCompact`、`toolTurnThreshold`（`core/src/compact/turn-loop-state.ts`） | 同样这三件状态 | 工具轮次是从 DSH 的**持久会话日志**里读出来的（一条带至少一次工具调用的 assistant 消息），而不是 ZCode 自己 turn loop 里的计数器。这与压缩接缝判断表面平衡时用的是同一个单位 —— 是**量出来的**，不是猜出来的步数 | `test/tracker.test.js` |
-| `RapidRefillDecision.shouldBlock`，reason 为 `compact_rapid_refill_breaker`（`core/src/compact/runtime/methods/compact.ts`） | 同样的拒绝语义，且**在摘要调用之前**拒绝 | 拒绝会**锁定**（latch）：循环是**停下来**，而不只是变慢；摘要调用一次都不花 | `index.js` 的 `compactIfNeeded`；真实会话里观察到 —— 见 `docs/MEASUREMENTS.md` |
-| 阈值是模块级常量（`MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3` 等） | 三个配置键：`toolTurnThreshold`、`maxConsecutiveRapidRefills`、`announceInPrompt` | 阈值是**行配置**而不是编译期常量，所以 profile 行与 preset 行可以不一样 | `logger.info compaction-breaker armed: rapid below 7 tool turns, trip at 3 in a row` |
-| 停机提示由 CLI 打印 | 熔断期间注入一个 prompt 段，另有 `/compaction-breaker status\|reset` | DSH 的宿主**会吞掉自动压缩路径抛出的错误**并继续这一轮。只抛错，用户只会看到压缩被静默关掉而没有任何解释 —— 注入提示段才是让「停下」可见的东西 | `index.js` 的 prompt section；`AGENTS.md`「Never break these」#3 |
-| `microcompact.ts` —— 整条清空旧工具结果、保留最近 5 条，带工具白名单与空闲 60 分钟触发 | **不取** | **暂未超过。** DSH 自带一个不同的确定性 pruner；本插件刻意不重做 ZCode 那套 | — |
-| 熔断挂在 ZCode 自己的 turn loop 上 | 挂在 DSH 的 `agent/pre-step` 步压力路径上，替换 `ctx.compaction` 里的一行 | 不依赖外部 CLI 的轮次概念，并且以「单槽位服务的一行替换」接入 | `cordis.patch.yml`；`docs/MEASUREMENTS.md` 里的 `trigger=pressure` |
+| rapid-refill 状态机 —— `consecutiveRapidRefills`、`toolTurnsSinceCompact`、`shouldBlock`，计算在 `zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts:158` | 同样这三件状态 | 工具轮次是从 DSH 的**持久会话日志**里读出来的（一条带至少一次工具调用的 assistant 消息），而不是 ZCode 自己 turn loop 里的计数器。这与压缩接缝判断表面平衡时用的是同一个单位 —— 是**量出来的**，不是猜出来的步数 | `node --test test/tracker.test.js` —— 「a healthy gap never trips the breaker, however long the run」 |
+| 拒绝的判定 —— `shouldBlock: consecutiveRapidRefills >= MAX_CONSECUTIVE_RAPID_REFILLS`（`…/turn-loop-state.ts:165`），在 `if (context.rapidRefill.shouldBlock)` 处被采纳（`…/runtime/methods/compact.ts:230`） | 同样的拒绝，且**在摘要调用之前** | 拒绝会**锁定**，而且发生在摘要**之前**而不是之后：模型调用一次都不花，且被跳闸的会话会一直保持跳闸，直到被重新武装 | `node --test test/tracker.test.js` —— 「the trip happens before the futile compaction, not after it」「once tripped, every later attempt stays refused」 |
+| 阈值是模块级常量 —— `RAPID_REFILL_TOOL_TURN_THRESHOLD = 3` 与 `MAX_CONSECUTIVE_RAPID_REFILLS = 3`（`…/turn-loop-state.ts:21`） | 同样两个阈值：`toolTurnThreshold` 与 `maxConsecutiveRapidRefills` | 它们是**行配置**而不是编译期常量，所以 profile 行与 preset 行可以不一样 —— 而且引擎挂载时会把**实际拿到的值**打出来 | `node tools/boot-check.mjs --port 32100` 会打出 `compaction-breaker armed: rapid below 7 tool turns, trip at 3 in a row` —— 那是一个配了 7 的行，默认值不可能产生这个输出 |
+| 停机提示是 CLI 打出来的一个字符串 —— `Autocompact stopped because the context refilled within fewer than … tool turns`（`…/runtime/helpers/model-errors.ts:52`），并带 `reason: "compact_rapid_refill_breaker"`（`:57`） | 熔断期间注入一个 prompt 段，另有 `/compaction-breaker status\|reset` | DSH 的宿主**会吞掉自动压缩路径抛出的错误**并继续这一轮。同样一个抛出，会让用户只看到压缩被静默关掉而没有任何解释；注入的提示段才是让「停下」可见的东西 | `node --test test/engine.test.js` —— 「the trip registers exactly one prompt section」（名字为 `compaction-breaker:tripped`）、「the /compaction-breaker command reports state and resets on request」 |
+| `microcompact.ts` —— 整条清空旧工具结果、保留最近 5 条（`…/packages/core/src/compact/microcompact.ts:14`） | **不取** | **暂未超过。** DSH 自带一个不同的确定性 pruner；本插件刻意不重做 ZCode 那套，也不主张在这件事上强过它 | — |
+| 熔断挂在 ZCode 自己的 turn loop 上 | 挂在 DSH 的 `agent/pre-step` 步压力路径上，替换 `ctx.compaction` 里的一行 | 不依赖外部 CLI 的轮次概念，并且以「单槽位服务的一行替换」接入 | `node tools/boot-check.mjs --port 32100` —— 断言 B 是从 `cordis.patch.yml` 里读行名；`docs/MEASUREMENTS.md` 记录了真实会话里到达的 `trigger=pressure` |
+
+### 怎么自己复核这张表
+
+```bash
+git clone https://github.com/BOWLUNA/dsh-zcode-breaker && cd dsh-zcode-breaker
+npm install --no-audit --no-fund @deepseek-ai/dsh@0.1.6-alpha.2   # 本插件所挂的宿主
+node --test test/tracker.test.js     # 状态机与拒绝，含跳闸的先后顺序
+node --test test/engine.test.js      # 包覆层：委派、prompt 段、命令
+node tools/boot-check.mjs --port 32100   # 真装真启动（四条断言）
+```
+
+`node --test` 不需要任何测试运行器，也不需要任何依赖。前两条就是上表的证据列；第三条是本仓库里**唯一**会真正 apply 插件的一道检查。
 
 ## 它解决的具体问题
 

@@ -20,18 +20,37 @@ dsh plugin --profile web add dsh-zcode-breaker
 
 ## What it takes from ZCode, and where it goes further
 
-Every row is meant to be checkable: the "took" column names a file and line in ZCode, and the "further"
-column names something this plugin actually does that the ZCode path does not. Where there is nothing to
-claim, the row says so instead of inventing one.
+Every row is meant to be checkable. The middle column names a file and line in the ZCode source — and those
+citations are not typed by hand and trusted: `verify-zcode-citations.mjs` in the control workspace resolves
+each one against a checkout and prints the line it found. The last column names a command you can run right
+now; where there is nothing to claim, the row says so instead of inventing a difference.
+
+Two of these paths were wrong until 2026-09-22: they read `core/src/compact/turn-loop-state.ts` and
+`core/src/compact/runtime/methods/compact.ts`, copied from a design note rather than from the source. The
+files are at `packages/core/src/runtime/methods/`. The guard could not catch it, because a path with no line
+number is not a citation it looks at — which is why the middle column now carries line numbers.
 
 | ZCode has | This plugin takes | Where this goes further | Evidence |
 | --- | --- | --- | --- |
-| The rapid-refill state machine — `consecutiveRapidRefills`, `toolTurnsSinceCompact`, `toolTurnThreshold` (`core/src/compact/turn-loop-state.ts`) | The same three pieces of state | A tool turn is read out of DSH's **durable session log** — one assistant message carrying at least one tool call — instead of a counter inside ZCode's own turn loop. That is the same unit the compaction seam uses when it reasons about surface balance, so it is measured rather than guessed | `test/tracker.test.js` |
-| `RapidRefillDecision.shouldBlock`, reason `compact_rapid_refill_breaker` (`core/src/compact/runtime/methods/compact.ts`) | The same refusal, and it refuses before the summarization call runs | The refusal **latches**: the loop stops rather than merely slowing down, and the summarization call is never spent | `index.js`, `compactIfNeeded`; observed in a real session — see `docs/MEASUREMENTS.md` |
-| Thresholds as module constants (`MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3`, …) | Three configuration keys: `toolTurnThreshold`, `maxConsecutiveRapidRefills`, `announceInPrompt` | The thresholds are **row configuration**, not compile-time constants, so a profile row and a preset row can differ | `logger.info compaction-breaker armed: rapid below 7 tool turns, trip at 3 in a row` |
-| The stop message is printed by the CLI | A prompt section injected while tripped, plus `/compaction-breaker status\|reset` | DSH's host **catches errors thrown from the automatic compaction path** and continues the turn. A thrown error alone would leave the person with silently disabled compaction and no explanation — the injected section is what makes the stop visible | `index.js` prompt section; `AGENTS.md`, "Never break these" #3 |
-| `microcompact.ts` — clears whole old tool results, keeps the most recent five, with a tool allowlist and a 60-minute idle trigger | **Not taken** | **Not yet surpassed.** DSH ships a different, deterministic pruner; this plugin deliberately does not reimplement ZCode's | — |
-| The breaker hangs off ZCode's own turn loop | It hangs off DSH's `agent/pre-step` step-pressure path, replacing one row of `ctx.compaction` | The mechanism is not tied to an external CLI's notion of a turn, and it installs as a one-row replacement of a single-slot service | `cordis.patch.yml`; `trigger=pressure` in `docs/MEASUREMENTS.md` |
+| The rapid-refill state machine — `consecutiveRapidRefills`, `toolTurnsSinceCompact`, `shouldBlock`, computed in `zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts:158` | The same three pieces of state | A tool turn is read out of DSH's **durable session log** — one assistant message carrying at least one tool call — instead of a counter inside ZCode's own turn loop. That is the same unit the compaction seam uses when it reasons about surface balance, so it is measured rather than guessed | `node --test test/tracker.test.js` — "a healthy gap never trips the breaker, however long the run" |
+| The refusal decision — `shouldBlock: consecutiveRapidRefills >= MAX_CONSECUTIVE_RAPID_REFILLS` (`…/turn-loop-state.ts:165`), acted on by `if (context.rapidRefill.shouldBlock)` (`…/runtime/methods/compact.ts:230`) | The same refusal, before the summarization call runs | The refusal **latches**, and it happens before the summarization rather than after: the model call is never spent, and a tripped session stays tripped until it is re-armed | `node --test test/tracker.test.js` — "the trip happens before the futile compaction, not after it", "once tripped, every later attempt stays refused" |
+| The thresholds as module constants — `RAPID_REFILL_TOOL_TURN_THRESHOLD = 3` and `MAX_CONSECUTIVE_RAPID_REFILLS = 3` (`…/turn-loop-state.ts:21`) | The same two thresholds: `toolTurnThreshold` and `maxConsecutiveRapidRefills` | They are **row configuration**, not compile-time constants, so a profile row and a preset row can differ — and the engine prints the values it actually got when it mounts | `node tools/boot-check.mjs --port 32100` prints `compaction-breaker armed: rapid below 7 tool turns, trip at 3 in a row` for a row configured with 7, which the defaults would not produce |
+| The stop message is a string the CLI prints — `Autocompact stopped because the context refilled within fewer than … tool turns` (`…/runtime/helpers/model-errors.ts:52`), with `reason: "compact_rapid_refill_breaker"` (`:57`) | A prompt section injected while tripped, plus `/compaction-breaker status\|reset` | DSH's host **catches errors thrown from the automatic compaction path** and continues the turn. The same throw would leave the person with compaction silently switched off and nothing explaining it; the injected section is what makes the stop visible | `node --test test/engine.test.js` — "the trip registers exactly one prompt section" (name `compaction-breaker:tripped`), "the /compaction-breaker command reports state and resets on request" |
+| `microcompact.ts` — clears whole old tool results, keeps the most recent five (`…/packages/core/src/compact/microcompact.ts:14`) | **Not taken** | **Not yet proven.** DSH ships a different, deterministic pruner; this plugin deliberately does not reimplement ZCode's, and claims no advantage over it | — |
+| The breaker hangs off ZCode's own turn loop | It hangs off DSH's `agent/pre-step` step-pressure path, replacing one row of `ctx.compaction` | The mechanism is not tied to an external CLI's notion of a turn, and it installs as a one-row replacement of a single-slot service | `node tools/boot-check.mjs --port 32100` — assertion B reads the row name out of `cordis.patch.yml`; `docs/MEASUREMENTS.md` records `trigger=pressure` arriving from a real session |
+
+### Reproducing the comparison
+
+```bash
+git clone https://github.com/BOWLUNA/dsh-zcode-breaker && cd dsh-zcode-breaker
+npm install --no-audit --no-fund @deepseek-ai/dsh@0.1.6-alpha.2   # the harness this plugin hooks
+node --test test/tracker.test.js     # the state machine and the refusal, including the trip ordering
+node --test test/engine.test.js      # the wrapper: delegation, the prompt section, the command
+node tools/boot-check.mjs --port 32100   # the plugin really installs and really starts (four assertions)
+```
+
+`node --test` needs no test runner and no dependencies. The first two commands are the evidence column
+above; the third is the only check in this repository that actually applies the plugin.
 
 ## The problem, concretely
 
