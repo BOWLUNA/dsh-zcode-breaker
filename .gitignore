@@ -1,4 +1,20 @@
-node_modules/
+# `node_modules` without a trailing slash on purpose.
+#
+# The slash makes the pattern match *directories only*, so a **symlink** named
+# `node_modules` was not ignored — and this repository had one committed, pointing
+# at a harness install that no longer exists:
+#
+#   $ git ls-files -s node_modules
+#   120000 f8d42d89a377dc3d95711046d86244e96ef6deb2 0	node_modules
+#   $ git cat-file -p f8d42d8
+#   /mnt/c/BL/AI/DSH Desktop/resources/app/node_modules
+#
+# Two consequences, both measured: `git status` permanently showed ` D node_modules`,
+# and a single `git restore` would recreate that dead link in the repository root —
+# where a symlink called `node_modules` misleads npm and pnpm.
+#
+# `node_modules` matches both the directory and the symlink, which is what is wanted.
+node_modules
 .refs/
 *.log
 .DS_Store

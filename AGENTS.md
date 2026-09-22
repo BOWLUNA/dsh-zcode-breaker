@@ -15,6 +15,8 @@ Repository conventions for coding agents working here. Read this before changing
 - Run them in order: the suite, the pairing re-record, the documented numbers. The order matters because the number check reads real results.
 - A guard that cannot fail is not a guard. When you add one, prove it fails on a mutated copy before trusting it.
 - The boot check is the only one that *applies* the plugin. Everything else reads files and will happily pass on a plugin that installs and does nothing. It needs `pnpm` on PATH, because `dsh plugin` forwards to it.
+- The boot check has four assertions: A the install exits 0, B `cordis.patch.yml`'s row name equals `package.json`'s name, C the port answers *and keeps answering* through `--settle`, D stderr stays empty. Exit 1 names the failing letter; exit 2 means the environment is missing something (no pnpm, no harness, or a port already in use) and says nothing about this plugin.
+- Assertion C deliberately refuses to run when the port is already taken. A listener that is not our child satisfies "the port answers" perfectly, and that produced two false greens in one batch of mutants. Do not relax it.
 
 ## Facts worth not rediscovering
 

@@ -40,13 +40,24 @@ const SCOPE = join(REPO, "node_modules", "@deepseek-ai");
 const PEERS = ["dsh-compaction-basic", "dsh-session", "schemastery", "cordis"];
 const printOnly = process.argv.includes("--print");
 
-/** Standard install locations for a harness, newest conventions first. */
+/**
+ * Standard install locations for a harness, most specific first.
+ *
+ * `DSH_INSTALL` wins so that moving a harness is one environment variable rather
+ * than a hunt through every link. The hard-coded Windows path is the last
+ * resort on this machine only; CI never reaches it, because there the harness is
+ * a normal `node_modules` dependency.
+ *
+ * Both previous locations — `C:\BL\AI\DSH Desktop\resources\app` and
+ * `%APPDATA%\dsh-desktop\harness` — were moved on 2026-09-21 and are now in the
+ * Recycle Bin. Probing them produced a dead entry in this list and nothing else,
+ * so they are gone.
+ */
 function harnessRoots() {
 	const roots = [];
 	if (process.env.DSH_INSTALL !== undefined) roots.push(process.env.DSH_INSTALL);
 	if (process.platform === "win32") {
-		roots.push("C:/BL/AI/DSH Desktop/resources/app");
-		roots.push(join(process.env.APPDATA ?? "", "dsh-desktop", "harness", "profiles"));
+		roots.push("C:/BL/AI/dsh-harness");
 	} else {
 		roots.push(join(process.env.HOME ?? "", ".dsh", "profiles"));
 	}
