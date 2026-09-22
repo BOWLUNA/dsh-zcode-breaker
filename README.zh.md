@@ -2,7 +2,34 @@
 
 [English](README.md) | 简体中文
 
+[![test](https://github.com/BOWLUNA/dsh-zcode-breaker/actions/workflows/test.yml/badge.svg)](https://github.com/BOWLUNA/dsh-zcode-breaker/actions/workflows/test.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![dsh 0.1.5-rc.2 | 0.1.6-alpha.2](https://img.shields.io/badge/dsh-0.1.5--rc.2%20%7C%200.1.6--alpha.2-blue)](package.json)
+[![node >=22.19](https://img.shields.io/badge/node-%3E%3D22.19-blue)](package.json)
+
 给 DeepSeek Harness 自动压缩用的 rapid-refill 熔断器：拦住「压完立刻又满、于是每一步都再压一次」这个死循环，并告诉用户是哪个过大的读取或工具输出造成的。思路来自 ZCode 的同名实现。
+
+```bash
+dsh plugin --profile web add dsh-zcode-breaker
+```
+
+> **Node：** 本插件所挂的宿主在 node 20 上**装不出来** —— 在 node 20 上 `npm install @deepseek-ai/dsh`
+> 只装入 10 个包、没有 `dsh` 可执行文件，而 node 24 上是 488 个。
+> `package.json` 目前仍声明 `>=20`；徽章写的是**实测值**。
+> 提高声明下限是一件待拍板的事，不在这里悄悄改掉。
+
+## 从 ZCode 取了什么，又在哪里走得更远
+
+每一行都应该可核对：「取了什么」那一列指向 ZCode 的具体文件与行号，「走得更远」那一列必须是本插件真的做到、而 ZCode 那条路径做不到的事。没有可主张的，就如实写「暂未超过」，不编。
+
+| ZCode 有什么 | 本插件取了什么 | 本插件多了什么（**优于**在哪） | 证据 |
+| --- | --- | --- | --- |
+| rapid-refill 状态机 —— `consecutiveRapidRefills`、`toolTurnsSinceCompact`、`toolTurnThreshold`（`core/src/compact/turn-loop-state.ts`） | 同样这三件状态 | 工具轮次是从 DSH 的**持久会话日志**里读出来的（一条带至少一次工具调用的 assistant 消息），而不是 ZCode 自己 turn loop 里的计数器。这与压缩接缝判断表面平衡时用的是同一个单位 —— 是**量出来的**，不是猜出来的步数 | `test/tracker.test.js` |
+| `RapidRefillDecision.shouldBlock`，reason 为 `compact_rapid_refill_breaker`（`core/src/compact/runtime/methods/compact.ts`） | 同样的拒绝语义，且**在摘要调用之前**拒绝 | 拒绝会**锁定**（latch）：循环是**停下来**，而不只是变慢；摘要调用一次都不花 | `index.js` 的 `compactIfNeeded`；真实会话里观察到 —— 见 `docs/MEASUREMENTS.md` |
+| 阈值是模块级常量（`MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3` 等） | 三个配置键：`toolTurnThreshold`、`maxConsecutiveRapidRefills`、`announceInPrompt` | 阈值是**行配置**而不是编译期常量，所以 profile 行与 preset 行可以不一样 | `logger.info compaction-breaker armed: rapid below 7 tool turns, trip at 3 in a row` |
+| 停机提示由 CLI 打印 | 熔断期间注入一个 prompt 段，另有 `/compaction-breaker status\|reset` | DSH 的宿主**会吞掉自动压缩路径抛出的错误**并继续这一轮。只抛错，用户只会看到压缩被静默关掉而没有任何解释 —— 注入提示段才是让「停下」可见的东西 | `index.js` 的 prompt section；`AGENTS.md`「Never break these」#3 |
+| `microcompact.ts` —— 整条清空旧工具结果、保留最近 5 条，带工具白名单与空闲 60 分钟触发 | **不取** | **暂未超过。** DSH 自带一个不同的确定性 pruner；本插件刻意不重做 ZCode 那套 | — |
+| 熔断挂在 ZCode 自己的 turn loop 上 | 挂在 DSH 的 `agent/pre-step` 步压力路径上，替换 `ctx.compaction` 里的一行 | 不依赖外部 CLI 的轮次概念，并且以「单槽位服务的一行替换」接入 | `cordis.patch.yml`；`docs/MEASUREMENTS.md` 里的 `trigger=pressure` |
 
 ## 它解决的具体问题
 
@@ -98,7 +125,7 @@ dsh plugin --profile web add dsh-zcode-breaker
 | `maxConsecutiveRapidRefills` | `3` | 连续第几次 rapid refill 时拒绝 |
 | `announceInPrompt` | `true` | 熔断后是否注入那段建议 prompt |
 
-合计 **13 个配置项**，并且本文件声明兼容 dsh `>=0.1.5-rc.2 <0.2.0-0`。
+合计 **13 个配置项**，并且本文件声明兼容 dsh `>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0`。
 
 ## 用户能看到的面
 
