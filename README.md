@@ -92,6 +92,30 @@ The seam is single-slot: a second provider in the same isolate scope makes `ctx.
 | Host | sessions that join no agent preset | automatically, through the bundle patch the installer mounts |
 | Agent realm | every ordinary session | one row replaced inside your agent preset, because no profile patch can reach a realm |
 
+### Which harness versions this supports, and why it stops where it does
+
+`>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0`
+
+**0.1.7 is not supported, and the range says so.** That is measured, not assumed. On a real
+0.1.7-alpha.2 instance (`dsh017` in this project's lab):
+
+| | 0.1.6-alpha.2 | 0.1.7-alpha.2 |
+| --- | --- | --- |
+| `dsh plugin add` | exit 0 | exit 0 |
+| `--dump-config` | exit 0 · 576 lines · stderr 0 B | exit 0 · 1237 lines · stderr 0 B |
+| real boot on a port | answering at t=1500 ms · stderr 0 B | answering at t=2000 ms · stderr 0 B |
+| host plane serves this engine | yes | **yes** — a probe read `ctx.get("compaction")` as `BreakerCompactionEngine` with `compactIfNeeded` a function |
+| preset plane | a preset in `<DSH_HOME>/.agent-presets/` is discovered | **no** — `list()` returned `[]` with `breaker-trip` seeded |
+
+0.1.7 replaced preset discovery with a declarative registry
+(`dsh-agent-preset-registry`, self-described as *"Declarative Agent preset registry and
+profile-backed editing"*), and the registry **does not scan directories**. The host half of
+this plugin works there; the half the README above tells you to set up does not. Advertising
+"supports 0.1.7" on the strength of the host half would be a half-truth, so the range excludes
+it — including the 0.1.7 *release*, which a range written as `... <0.2.0-0` would still accept.
+`tools/verify-version-consistency.mjs` now fails the build if the declared range covers a
+version on its measured-unsupported list, which is how this gap was found.
+
 ### Install
 
 ```bash
@@ -146,7 +170,7 @@ Added by this plugin:
 | `maxConsecutiveRapidRefills` | `3` | refuse on the Nth consecutive rapid refill |
 | `announceInPrompt` | `true` | inject the advisory prompt section once tripped |
 
-That is 13 config keys in total, and this file declares compatibility with dsh `>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0`.
+That is 13 config keys in total, and this file declares compatibility with dsh `>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0`.
 
 ## Surfaces
 

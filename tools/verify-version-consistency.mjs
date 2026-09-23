@@ -155,6 +155,14 @@ const SELFTEST = [
 	// accepted this one, which is the false green that motivated the fix.
 	["0.1.6-alpha.2", ">=0.1.5-rc.2 <0.2.0-0", false],
 	["0.1.5-rc.2", ">=0.1.5-rc.2 <0.2.0-0", true],
+	// The range this package now declares. 0.1.7 is excluded on purpose, and the
+	// two lines below are what make that exclusion visible if someone widens it
+	// back without re-measuring.
+	["0.1.5-rc.3", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0", true],
+	["0.1.6-alpha.2", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0", true],
+	["0.1.7-alpha.1", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0", false],
+	["0.1.7-alpha.2", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0", false],
+	["0.1.7", ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0", false],
 ];
 
 if (process.argv.includes("--selftest")) {
@@ -170,6 +178,47 @@ if (process.argv.includes("--selftest")) {
 	process.exit(0);
 }
 
+/**
+ * Harness versions that exist on npm, have been measured, and are **not**
+ * supported — with the measurement that says so. The declared range must exclude
+ * every one of them.
+ *
+ * This is the guard that catches a range that is too *wide*, which the comparator
+ * self-test cannot: the self-test proves the comparator agrees with semver, and
+ * says nothing about whether the declared range is honest. Measured 2026-09-23 on
+ * a real 0.1.7-alpha.2 instance (`C:/Users/BOWLUNA/Desktop/DSHTEST/breaker/dsh017`):
+ *
+ *   · the host plane works — `dsh plugin add` exit 0, `--dump-config` exit 0 /
+ *     1237 lines / stderr 0 bytes, `--port 32101` answering at t=2000ms with 0
+ *     bytes on stderr, and a probe read `ctx.get("compaction")` as
+ *     `BreakerCompactionEngine` with `compactIfNeeded` a function;
+ *   · the **preset plane does not** — 0.1.7 replaced directory scanning with a
+ *     declarative registry, so a preset placed in `<DSH_HOME>/.agent-presets/` is
+ *     no longer discovered (`list()` returned `[]` with `breaker-trip` seeded).
+ *
+ * The README documents both planes, so "supports 0.1.7" would be a half-truth, and
+ * a half-truth in a compatibility range is the thing this guard exists to stop.
+ */
+const UNSUPPORTED = [
+	{
+		version: "0.1.7-alpha.1",
+		reason: "preset plane: the registry replaces directory scanning, so the documented .agent-presets setup is not discovered",
+	},
+	{
+		version: "0.1.7-alpha.2",
+		reason: "measured 2026-09-23: host plane serves this engine, preset plane does not (list() = [] with a preset seeded)",
+	},
+	{
+		// The prerelease gate already excludes 0.1.7-alpha.x, so a range written as
+		// `... <0.2.0-0` looks safe while still accepting the *release* 0.1.7 — and
+		// the preset plane is broken there for the same structural reason. That gap
+		// is what this entry exists to close; it is the one that made the declared
+		// range in this repository too wide on 2026-09-23.
+		version: "0.1.7",
+		reason: "same preset-plane break as 0.1.7-alpha.2, which is structural (registry replaces directory scanning), not an alpha-only defect",
+	},
+];
+
 const manifest = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
 const range = manifest.engines?.dsh;
 if (range === undefined) {
@@ -179,7 +228,14 @@ if (range === undefined) {
 
 const failures = [];
 
-// The comparator's own semantics first: a wrong comparator would make every
+// Is the declared range too wide? Every known-unsupported version must be outside it.
+for (const { version, reason } of UNSUPPORTED) {
+	if (satisfies(version, range)) {
+		failures.push(`declared range ${range} claims to support ${version}, but it is known unsupported: ${reason}`);
+	}
+}
+
+// The comparator's own semantics next: a wrong comparator would make every
 // conclusion below meaningless, and would do it silently.
 for (const [version, sampleRange, expected] of SELFTEST) {
 	if (satisfies(version, sampleRange) !== expected) {

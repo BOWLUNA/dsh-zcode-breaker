@@ -85,6 +85,29 @@ compaction (step pressure): shadowed N surface nodes (seqs A-B, ~T tokens)
 | 宿主 | 不加入任何 agent preset 的会话 | 自动，通过安装器挂上的 bundle patch |
 | agent 域 | 每一个普通会话 | 在你的 agent preset 里替换一行，因为任何 profile 补丁都够不到一个域 |
 
+### 支持哪些 harness 版本，以及为什么停在这里
+
+`>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0`
+
+**0.1.7 不支持，区间就是这么写的。** 这是实测出来的，不是假设。在一个真实的 0.1.7-alpha.2 实例上
+（本项目实验室里的 `dsh017`）：
+
+| | 0.1.6-alpha.2 | 0.1.7-alpha.2 |
+| --- | --- | --- |
+| `dsh plugin add` | exit 0 | exit 0 |
+| `--dump-config` | exit 0 · 576 行 · stderr 0 B | exit 0 · 1237 行 · stderr 0 B |
+| 真启动端口应答 | t=1500ms 应答 · stderr 0 B | t=2000ms 应答 · stderr 0 B |
+| 宿主平面是否由本引擎服务 | 是 | **是** —— 探针读到 `ctx.get("compaction")` 是 `BreakerCompactionEngine`，`compactIfNeeded` 是函数 |
+| preset 平面 | `<DSH_HOME>/.agent-presets/` 里的 preset 会被发现 | **不会** —— 种了 `breaker-trip` 之后 `list()` 返回 `[]` |
+
+0.1.7 把 preset 发现机制换成了**声明式注册表**（`dsh-agent-preset-registry`，自述为
+*"Declarative Agent preset registry and profile-backed editing"*），而注册表**不扫描目录**。
+本插件的**宿主那一半在 0.1.7 上是好的**；但上面那段 README 让你去配的**preset 那一半不是**。
+凭宿主那一半就说「支持 0.1.7」是半句真话，所以区间把它排除了 —— 包括 0.1.7 的**正式版**，
+而一个写成 `... <0.2.0-0` 的区间是会接受它的。
+`tools/verify-version-consistency.mjs` 现在会在「声明区间覆盖了实测不支持清单里的版本」时**让构建失败** ——
+这个缺口就是这么被找出来的。
+
 ### 安装
 
 ```bash
@@ -139,7 +162,7 @@ dsh plugin --profile web add dsh-zcode-breaker
 | `maxConsecutiveRapidRefills` | `3` | 连续第几次 rapid refill 时拒绝 |
 | `announceInPrompt` | `true` | 熔断后是否注入那段建议 prompt |
 
-合计 **13 个配置项**，并且本文件声明兼容 dsh `>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.2.0-0`。
+合计 **13 个配置项**，并且本文件声明兼容 dsh `>=0.1.5-rc.2 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0`。
 
 ## 用户能看到的面
 
