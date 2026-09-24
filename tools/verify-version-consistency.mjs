@@ -253,8 +253,22 @@ const ciPath = join(REPO, ".github", "workflows", "test.yml");
 if (!existsSync(ciPath)) {
 	failures.push(".github/workflows/test.yml is missing — the matrix that justifies the range cannot be read");
 } else {
-	const ci = readFileSync(ciPath, "utf8");
-	const matrixVersions = new Set([...ci.matchAll(/dsh:\s*'([^']+)'/g)].map((match) => match[1]));
+	const ci = readFileSync(ciPath, "utf8").replace(/^[ \t]*#.*$/gmu, "");
+	const matrixVersions = new Set();
+	// `include:` legs spell one version each: `dsh: '0.1.5-rc.3'`.
+	for (const match of ci.matchAll(/dsh:\s*'([^']+)'/g)) matrixVersions.add(match[1]);
+	// The base list spells several: `dsh: ['0.1.5-rc.2', '0.1.6-alpha.2']`. Reading
+	// only the first form left a silent hole — a version placed in the base list was
+	// invisible to the one check meant to catch a matrix entry the range does not
+	// cover. Measured 2026-09-24: with `dsh: ['0.1.7-alpha.2']` as the base list this
+	// guard printed ✓ and exited 0, although CI would then run an unsupported
+	// version on two legs.
+	// Full-line comments are stripped above for the same reason the matrix is read
+	// from text at all: prose can carry the same literal as a declaration, and the
+	// guard must read declarations. Inline trailing comments are not stripped.
+	for (const list of ci.matchAll(/dsh:\s*\[([^\]]*)\]/g)) {
+		for (const item of list[1].matchAll(/'([^']+)'|"([^"]+)"/g)) matrixVersions.add(item[1] ?? item[2]);
+	}
 	if (matrixVersions.size === 0) failures.push("the CI matrix declares no dsh versions");
 	for (const version of matrixVersions) {
 		if (!satisfies(version, range)) failures.push(`${version} is exercised by CI but the declared range is ${range}`);
