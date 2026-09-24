@@ -30,10 +30,11 @@ jobs:
         os: [ubuntu-latest]
         # The manifest's floor is node 22.19; 24 is the development runtime.
         node-version: ['22', '24']
-        # Both harness lines this project has been booted against by hand, in this
+        # The two harness lines this project has been booted against by hand, in this
         # repository's own lab. Widening the matrix is a claim: do it after a real
         # boot, not before — and drop a version here when the declared range stops
         # covering it, or `tools/verify-version-consistency.mjs` fails the build.
+        # The version npm resolves `latest` to is exercised by an extra leg below.
         dsh: ['0.1.5-rc.2', '0.1.6-alpha.2']
         include:
           # Windows is the platform most likely to differ: this repository's
@@ -42,6 +43,14 @@ jobs:
           - os: windows-latest
             node-version: '24'
             dsh: '0.1.5-rc.2'
+          # The version npm resolves `latest` to, so it is the one a user gets
+          # when they do not pin a version. The declared range covered it, but no
+          # leg had ever run on it — the range was honest, the coverage was not,
+          # and the untested line was the one most people would install.
+          # Added 2026-09-24, after a real boot on a throwaway 0.1.5-rc.3 tree.
+          - os: ubuntu-latest
+            node-version: '24'
+            dsh: '0.1.5-rc.3'
 
     steps:
       - uses: actions/checkout@v4

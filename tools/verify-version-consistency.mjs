@@ -47,7 +47,7 @@ const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
  * The declared range is wider than this list on purpose — it is what the
  * package is expected to work on, while this list is what has been proven.
  */
-const TESTED = ["0.1.5-rc.2", "0.1.6-alpha.2"];
+const TESTED = ["0.1.5-rc.2", "0.1.5-rc.3", "0.1.6-alpha.2"];
 
 /**
  * Parse `x.y.z` or `x.y.z-pre`.
